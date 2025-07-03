@@ -36,13 +36,22 @@ UserIn_Pydantic = pydantic_model_creator(
     exclude=("created_at", "user_id"),
 )
 
-class ApiKeys(Model):
-    key_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="api_keys", description="关联用户", on_delete=fields.CASCADE)
-    api_key = fields.CharField(max_length=255, unique=True, description="加密存储的API密钥")
-    description = fields.CharField(max_length=255, description="描述", null=True)
-    created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
-    is_active = fields.BooleanField(default=True, description="是否启用")
+class APIKeys(Model):
+    key_id = fields.IntField(pk=True)
+    user = fields.ForeignKeyField(
+        "models.Users", 
+        related_name="api_keys",
+        on_delete=fields.CASCADE
+    )
+    api_key = fields.CharField(max_length=255, unique=True)
+    api_name = fields.CharField(max_length=255, null=True)  # 原description字段
+    api_address = fields.CharField(max_length=255, null=True)  # 新增API地址字段
+    api_type = fields.CharField(max_length=50, null=True)    # 新增API类型字段
+    created_at = fields.DatetimeField(auto_now_add=True)
+    is_active = fields.BooleanField(default=True)
+
+    class Meta:
+        table = "api_keys"
 
 class Sessions(Model):
     session_id = fields.IntField(pk=True)  # 主键
@@ -165,3 +174,11 @@ CommunityInteractions_Pydantic = pydantic_model_creator(
     name="CommunityInteractions"
 )
 Tags_Pydantic = pydantic_model_creator(Tags, name="Tags")
+
+APIKeys_Pydantic = pydantic_model_creator(APIKeys, name="APIKeys")
+APIKeysIn_Pydantic = pydantic_model_creator(
+    APIKeys, 
+    name="APIKeysIn", 
+    exclude_readonly=True,
+    exclude=("created_at",)  # 排除自动生成的字段
+)

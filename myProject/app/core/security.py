@@ -98,3 +98,7 @@ async def get_current_admin_user(current_user: Users = Depends(get_current_user)
             detail="Admin privileges required"
         )
     return current_user
+
+def encrypt_api_key(api_key: str) -> str:
+    """对API密钥进行加密存储"""
+    return pwd_context.hash(api_key)
