@@ -39,14 +39,18 @@ from tortoise.contrib.fastapi import register_tortoise
 from settings import TORTOISE_ORM
 from api.management import manage_api
 from api.optimizer import optimize_api
+from api.newop import optimize_new_api
+from api.search import search_api
 
 register_tortoise(
     app=app,
     config=TORTOISE_ORM,
 )
 
-app.include_router(manage_api, prefix="/manage", tags=["01 提示词管理"])
-app.include_router(optimize_api, prefix="/optimize", tags=["02 提示词优化"])
+app.include_router(manage_api, prefix="/manage", tags=["01 提示词管理（收藏相关）"])
+app.include_router(search_api, prefix="/search", tags=["02 提示词管理（搜索相关）"])
+app.include_router(optimize_new_api, prefix="/optimize", tags=["03 提示词优化"])
+app.include_router(optimize_api, prefix="/warning/optimize", tags=["未完成04 提示词优化"])
 
 if __name__ == '__main__':
     uvicorn.run("main:app", port=8080, reload=True)

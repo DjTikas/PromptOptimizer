@@ -68,10 +68,8 @@ class OptimizationConfigs(Model):
     reflection_enabled = fields.BooleanField(description="是否启用反思迭代")
 
 class CommunityInteractions(Model):
-    interaction_id = fields.IntField(pk=True)  # 主键
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="community_interactions", description="关联提示词")
-    user = fields.ForeignKeyField("models.Users", related_name="community_interactions", description="操作用户")
-    action_type = fields.CharField(max_length=10, description="互动类型", choices=["like", "collect", "use"])
+    prompt = fields.ForeignKeyField("models.Prompts", related_name="community_interactions", description="被点赞提示词")
+    user = fields.ForeignKeyField("models.Users", related_name="community_interactions", description="点赞用户")
     created_at = fields.DatetimeField(auto_now_add=True, description="操作时间")
 
 class Generations(Model):

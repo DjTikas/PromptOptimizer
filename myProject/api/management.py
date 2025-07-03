@@ -3,11 +3,17 @@ from models import Prompts, Folders, PromptFolders
 from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
-from auth import get_current_user_id  # 假设有认证模块
+from auth import get_current_user  # 假设有认证模块
 
 manage_api = APIRouter()
 
 # 基础模型定义
+class Cur_user(BaseModel):
+    user_id: int
+    email: str
+    role: str
+    avatar_url: str
+
 class PromptBase(BaseModel):
     session_id: int
     original_content: str
@@ -47,14 +53,16 @@ class FolderResponse(FolderBase):
 
 # ---- 提示词管理 ----
 @manage_api.get("/prompts", response_model=List[PromptResponse])
-async def get_all_prompts(user_id: int = Depends(get_current_user_id)):
+async def get_all_prompts(cur_user: Cur_user = Depends(get_current_user)):
     """获取当前用户的所有提示词"""
-    return await Prompts.filter(user_id=user_id).all()
+
+    return await Prompts.filter(user_id=cur_user.user_id).all()
+
 
 @manage_api.get("/prompts/{prompt_id}", response_model=PromptResponse)
-async def get_prompt(prompt_id: int, user_id: int = Depends(get_current_user_id)):
+async def get_prompt(prompt_id: int, cur_user: int = Depends(get_current_user)):
     """获取单个提示词详情"""
-    prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=user_id)
+    prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=cur_user.user_id)
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -63,11 +71,11 @@ async def get_prompt(prompt_id: int, user_id: int = Depends(get_current_user_id)
     return prompt
 
 @manage_api.post("/prompts", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
-async def create_prompt(prompt: PromptCreate, user_id: int = Depends(get_current_user_id)):
+async def create_prompt(prompt: PromptCreate, cur_user: int = Depends(get_current_user)):
     """创建新提示词"""
     # 在实际应用中，prompt_id 应由数据库自动生成，不应由客户端提供
     prompt_obj = await Prompts.create(
-        user_id=user_id,
+        user_id=cur_user.user_id,
         **prompt.model_dump()
     )
     return prompt_obj
@@ -76,11 +84,11 @@ async def create_prompt(prompt: PromptCreate, user_id: int = Depends(get_current
 async def update_prompt(
     prompt_id: int, 
     prompt: PromptUpdate,
-    user_id: int = Depends(get_current_user_id)
+    cur_user: int = Depends(get_current_user)
 ):
     """更新提示词内容"""
     # 验证提示词存在且属于当前用户
-    if not await Prompts.exists(prompt_id=prompt_id, user_id=user_id):
+    if not await Prompts.exists(prompt_id=prompt_id, user_id=cur_user.user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="提示词不存在或无权修改"
@@ -90,9 +98,9 @@ async def update_prompt(
     return await Prompts.get(prompt_id=prompt_id)
 
 @manage_api.delete("/prompts/{prompt_id}")
-async def delete_prompt(prompt_id: int, user_id: int = Depends(get_current_user_id)):
+async def delete_prompt(prompt_id: int, cur_user: int = Depends(get_current_user)):
     """删除单个提示词"""
-    delete_count = await Prompts.filter(prompt_id=prompt_id, user_id=user_id).delete()
+    delete_count = await Prompts.filter(prompt_id=prompt_id, user_id=cur_user.user_id).delete()
     if not delete_count:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -103,13 +111,13 @@ async def delete_prompt(prompt_id: int, user_id: int = Depends(get_current_user_
 @manage_api.delete("/prompts", status_code=status.HTTP_207_MULTI_STATUS)
 async def batch_delete_prompts(
     prompt_ids: List[int], 
-    user_id: int = Depends(get_current_user_id)
+    cur_user: int = Depends(get_current_user)
 ):
     """批量删除提示词"""
     results = {}
     async with in_transaction():
         for pid in prompt_ids:
-            delete_count = await Prompts.filter(prompt_id=pid, user_id=user_id).delete()
+            delete_count = await Prompts.filter(prompt_id=pid, user_id=cur_user.user_id).delete()
             results[pid] = "删除成功" if delete_count else "未找到或无权操作"
     
     return results
@@ -117,15 +125,15 @@ async def batch_delete_prompts(
 
 # ---- 文件夹管理 ----
 @manage_api.get("/folders", response_model=List[FolderResponse])
-async def get_all_folders(user_id: int = Depends(get_current_user_id)):
+async def get_all_folders(cur_user: int = Depends(get_current_user)):
     """获取用户所有文件夹"""
-    return await Folders.filter(user_id=user_id).all()
+    return await Folders.filter(user_id=cur_user.user_id).all()
 
 @manage_api.post("/folders", response_model=FolderResponse, status_code=status.HTTP_201_CREATED)
-async def create_folder(folder: FolderCreate, user_id: int = Depends(get_current_user_id)):
+async def create_folder(folder: FolderCreate, cur_user: int = Depends(get_current_user)):
     """创建新文件夹"""
     folder_obj = await Folders.create(
-        user_id=user_id,
+        user_id=cur_user.user_id,
         **folder.model_dump()
     )
     return folder_obj
@@ -134,10 +142,10 @@ async def create_folder(folder: FolderCreate, user_id: int = Depends(get_current
 async def update_folder(
     folder_id: int, 
     folder: FolderCreate,
-    user_id: int = Depends(get_current_user_id)
+    cur_user: int = Depends(get_current_user)
 ):
     """更新文件夹信息"""
-    if not await Folders.exists(folder_id=folder_id, user_id=user_id):
+    if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件夹不存在或无权修改"
@@ -147,13 +155,13 @@ async def update_folder(
     return await Folders.get(folder_id=folder_id)
 
 @manage_api.delete("/folders/{folder_id}")
-async def delete_folder(folder_id: int, user_id: int = Depends(get_current_user_id)):
+async def delete_folder(folder_id: int, cur_user: int = Depends(get_current_user)):
     """删除文件夹（同时移除关联）"""
     async with in_transaction():
         # 删除文件夹关联关系
         await PromptFolders.filter(folder_id=folder_id).delete()
         # 删除文件夹本身
-        delete_count = await Folders.filter(folder_id=folder_id, user_id=user_id).delete()
+        delete_count = await Folders.filter(folder_id=folder_id, user_id=cur_user.user_id).delete()
     
     if not delete_count:
         raise HTTPException(
@@ -164,10 +172,10 @@ async def delete_folder(folder_id: int, user_id: int = Depends(get_current_user_
 
 # ---- 文件夹与提示词关联管理 ----
 @manage_api.get("/folders/{folder_id}/prompts", response_model=List[PromptResponse])
-async def get_folder_prompts(folder_id: int, user_id: int = Depends(get_current_user_id)):
+async def get_folder_prompts(folder_id: int, cur_user: int = Depends(get_current_user)):
     """获取文件夹内的所有提示词"""
     # 验证文件夹属于当前用户
-    if not await Folders.exists(folder_id=folder_id, user_id=user_id):
+    if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件夹不存在或无权访问"
@@ -195,41 +203,42 @@ async def get_folder_prompts(folder_id: int, user_id: int = Depends(get_current_
 
 class FolderOperation(BaseModel):
     prompt_ids: List[int]
+    cur_folder_id: int = 0 # 如果是移动，则要从提示词所在的当前文件夹移除
     move: bool = True  # True=移动, False=复制
 
 @manage_api.post("/folders/{folder_id}/prompts")
 async def add_prompts_to_folder(
     folder_id: int,
     operation: FolderOperation,
-    user_id: int = Depends(get_current_user_id)
+    cur_user: int = Depends(get_current_user)
 ):
     """添加提示词到文件夹（移动或复制）"""
     # 验证文件夹属于当前用户
-    if not await Folders.exists(folder_id=folder_id, user_id=user_id):
+    if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件夹不存在或无权访问"
         )
     
     # 验证所有提示词属于当前用户
-    prompt_count = await Prompts.filter(
-        prompt_id__in=operation.prompt_ids,
-        user_id=user_id
-    ).count()
+    # prompt_count = await Prompts.filter(
+    #     prompt_id__in=operation.prompt_ids,
+    #     user_id=cur_user.user_id
+    # ).count()
     
-    if prompt_count != len(operation.prompt_ids):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="部分提示词不存在或无权操作"
-        )
+    # if prompt_count != len(operation.prompt_ids):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="部分提示词不存在或无权操作"
+    #     )
     
     # 执行添加操作
-    folder = await Folders.get(folder_id=folder_id)
+    # folder = await Folders.get(folder_id=folder_id)
     async with in_transaction():
         for pid in operation.prompt_ids:
-            # 移动操作：先删除其他关联
+            # 移动操作：先删除现在的关联
             if operation.move:
-                await PromptFolders.filter(prompt_id=pid).delete()
+                await PromptFolders.filter(prompt_id=pid, folder_id=operation.cur_folder_id).delete()
             
             # 添加新关联（如果不存在）
             if not await PromptFolders.exists(prompt_id=pid, folder_id=folder_id):
@@ -241,11 +250,11 @@ async def add_prompts_to_folder(
 async def remove_prompts_from_folder(
     folder_id: int,
     prompt_ids: List[int],
-    user_id: int = Depends(get_current_user_id)
+    cur_user: int = Depends(get_current_user)
 ):
     """从文件夹中移除提示词"""
     # 验证文件夹属于当前用户
-    if not await Folders.exists(folder_id=folder_id, user_id=user_id):
+    if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件夹不存在或无权访问"

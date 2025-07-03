@@ -1,13 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from models import *
 from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
-from auth import get_current_user_id  # 假设有认证模块
+from tortoise.exceptions import DoesNotExist
+from auth import get_current_user  # 假设有认证模块
+from llm.llm_client import *
+from llm.config import APIConfig
+from llm.optimization import apply_role_enhancement
 
 optimize_api = APIRouter()
 
 # ---- 基础模型定义 ----
+class APIConfig_temp(BaseModel):
+    api_key: str = "sk-QGEkpTzYOdG6jkOtTR2UIpR09XINClFMG77POafAefkknppB"
+    model: str = "gpt-3.5-turbo"
+    api_base: str = "https://api.chatanywhere.tech"
+    api_type: str = "openai"
+
 class OptimizationConfig(BaseModel):
     optimization_model: str = "gpt-4"  # 默认优化模型
     role_enhancement: Optional[str] = None  # 角色强化配置
@@ -53,9 +63,9 @@ async def get_preset_roles():
     roles = await Roles.filter(is_preset=True).all()
     
     # 将 Roles 对象转换为 RoleExampleResponse 模型
-    role_responses = [
+    return [
         RoleExampleResponse(
-            id=role.role_id,  # 将 role_id 映射为 id
+            id=role.role_id,
             name=role.name,
             description=role.description,
             content=role.content,
@@ -63,8 +73,22 @@ async def get_preset_roles():
         )
         for role in roles
     ]
+
+@optimize_api.get("/user-roles", response_model=List[RoleExampleResponse])
+async def get_user_roles(user_id: int = Depends(get_current_user)):
+    """获取当前用户的自定义角色"""
+    roles = await Roles.filter(user_id=user_id).all()
     
-    return role_responses
+    return [
+        RoleExampleResponse(
+            id=role.role_id,
+            name=role.name,
+            description=role.description,
+            content=role.content,
+            is_preset=role.is_preset
+        )
+        for role in roles
+    ]
 
 @optimize_api.get("/preset-examples", response_model=List[RoleExampleResponse])
 async def get_preset_examples():
@@ -89,24 +113,24 @@ async def get_preset_examples():
 @optimize_api.post("/custom-roles", response_model=RoleExampleResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_role(
     role: RoleExampleCreate,
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user)
 ):
     """创建自定义角色"""
     role_obj = await Roles.create(
         user_id=user_id,
-        **role.dict()
+        **role.model_dump()
     )
     return role_obj
 
 @optimize_api.post("/custom-examples", response_model=RoleExampleResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_example(
     example: RoleExampleCreate,
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user)
 ):
     """创建自定义示例"""
     example_obj = await Examples.create(
         user_id=user_id,
-        **example.dict()
+        **example.model_dump()
     )
     return example_obj
 
@@ -114,17 +138,21 @@ async def create_custom_example(
 @optimize_api.post("/optimize", response_model=OptimizationResult)
 async def optimize_prompt(
     request: OptimizationRequest,
-    user_id: int = Depends(get_current_user_id)
+    api_config: APIConfig_temp = Body(default=APIConfig_temp()),
+    user_id: int = Depends(get_current_user)
 ):
     """
     优化提示词
     - 接收原始提示词和优化配置
     - 返回优化后的提示词内容
     """
+
     # 这里会调用实际的优化逻辑（伪代码）
-    optimized_content = apply_optimization(
+    optimized_content = await apply_optimization(
         request.original_content,
-        request.config
+        request.config,
+        api_config,
+        user_id  # 传递用户ID
     )
     
     return OptimizationResult(
@@ -137,7 +165,7 @@ async def test_prompt(
     original_content: str,
     optimized_content: str,
     test_request: TestRequest,
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user)
 ):
     """
     测试提示词效果
@@ -168,7 +196,7 @@ async def test_prompt(
 async def save_optimization_config(
     prompt_id: int,
     config: OptimizationConfig,
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user)
 ):
     """保存优化配置到提示词"""
     # 验证提示词存在且属于当前用户
@@ -182,7 +210,7 @@ async def save_optimization_config(
     # 创建或更新优化配置
     opt_config, created = await OptimizationConfigs.update_or_create(
         prompt_id=prompt_id,
-        defaults=config.dict()
+        defaults=config.model_dump()
     )
     
     return opt_config
@@ -190,7 +218,7 @@ async def save_optimization_config(
 @optimize_api.get("/prompts/{prompt_id}/config", response_model=OptimizationConfig)
 async def get_optimization_config(
     prompt_id: int,
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user)
 ):
     """获取提示词的优化配置"""
     prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=user_id)
@@ -210,15 +238,22 @@ async def get_optimization_config(
     return config
 
 # ---- 伪实现函数 ----
-def apply_optimization(original_content: str, config: OptimizationConfig) -> str:
-    """伪代码：应用优化设置生成优化后提示词"""
+async def apply_optimization(
+    original_content: str, 
+    config: OptimizationConfig, 
+    api_config_in: APIConfig_temp,
+    user_id: int  # 添加用户ID参数
+) -> str:
+    """应用优化设置生成优化后提示词"""
     optimized = original_content
     
     # 1. 角色强化
     if config.role_enhancement:
-        # role = get_role_content(config.role_enhancement)
-        # optimized = f"{role}\n\n{optimized}"
-        pass
+        optimized = await apply_role_enhancement(
+            optimized, 
+            config.role_enhancement,
+            user_id
+        )
     
     # 2. 示例增强
     if config.example_enhancement:
@@ -228,7 +263,7 @@ def apply_optimization(original_content: str, config: OptimizationConfig) -> str
     
     # 3. 思维链(CoT)
     if config.cot_enabled:
-        optimized += "\n\nLet's think step by step."
+        optimized += "\n\n请一步步思考，详细解释你的推理过程。"
     
     # 4. 链式分解（简化实现）
     if config.chain_decomposition:
@@ -239,7 +274,22 @@ def apply_optimization(original_content: str, config: OptimizationConfig) -> str
     if config.reflection_enabled:
         optimized += "\n\nAfter generating, review your response for accuracy, completeness, and logical consistency. Make necessary corrections."
     
+    # 6. 通用优化 (调用LLM进行最终优化)
+    api_config = APIConfig(
+        model=api_config_in.model,
+        api_base=api_config_in.api_base,
+        api_type=api_config_in.api_type,
+        api_key=api_config_in.api_key
+    )
+    
+    # 调用LLM进行通用优化
+    optimized = await optimize_prompt_in_llm(
+        original_prompt=optimized,
+        config=api_config
+    )
+
     return optimized
+
 
 def generate_with_prompt(prompt: str, input: str) -> str:
     """伪代码：使用提示词生成内容"""
