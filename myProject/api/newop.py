@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from tortoise.transactions import in_transaction
 from tortoise.exceptions import DoesNotExist
-from auth import get_current_user  # 假设有认证模块
+from app.core.security import get_current_active_user
 from llm.llm_client import *
 from llm.config import APIConfig
 from llm.optimization import apply_role_enhancement
@@ -86,7 +86,7 @@ class OptimizeResponse(BaseModel):
 @optimize_new_api.post("/optimize", response_model=OptimizeResponse)
 async def optimize_prompt(
     request: OptimizeRequest,
-    user: Cur_user = Depends(get_current_user)
+    user: Users = Depends(get_current_active_user)
 ):
     """
     执行提示词优化

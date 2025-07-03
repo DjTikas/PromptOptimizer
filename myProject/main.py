@@ -41,6 +41,9 @@ from api.management import manage_api
 from api.optimizer import optimize_api
 from api.newop import optimize_new_api
 from api.search import search_api
+from api.users import user_api
+from api.prompt import public_api
+from auth import router
 
 register_tortoise(
     app=app,
@@ -50,7 +53,9 @@ register_tortoise(
 app.include_router(manage_api, prefix="/manage", tags=["01 提示词管理（收藏相关）"])
 app.include_router(search_api, prefix="/search", tags=["02 提示词管理（搜索相关）"])
 app.include_router(optimize_new_api, prefix="/optimize", tags=["03 提示词优化"])
-app.include_router(optimize_api, prefix="/warning/optimize", tags=["未完成04 提示词优化"])
+app.include_router(router, prefix="/auth", tags=["04 登录注册"])
+app.include_router(user_api, prefix="/user", tags=["05 用户信息"])
+app.include_router(public_api, prefix="/public", tags=["06 公共搜索"])
 
 if __name__ == '__main__':
     uvicorn.run("main:app", port=8080, reload=True)

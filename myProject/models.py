@@ -1,17 +1,44 @@
 from tortoise.models import Model
 from tortoise import fields
+from tortoise.contrib.pydantic import pydantic_model_creator
+from enum import Enum
+from datetime import datetime
+from pytz import utc
 
+# 1. 角色枚举
+class UserRole(str, Enum):
+    user  = "user"
+    admin = "admin"
+
+# 2. Users 模型
 class Users(Model):
-    user_id = fields.IntField(pk=True)  # 主键
-    email = fields.CharField(max_length=255, unique=True, description="注册邮箱")
-    password_hash = fields.CharField(max_length=255, description="加密后的密码（建议使用bcrypt）")
-    role = fields.CharField(max_length=5, description="用户角色", default="user")
-    avatar_url = fields.CharField(max_length=255, description="头像存储路径", null=True)
-    created_at = fields.DatetimeField(auto_now_add=True, description="注册时间")
+    user_id      = fields.IntField(pk=True)
+    email        = fields.CharField(max_length=255, unique=True, description="注册邮箱")
+    password_hash= fields.CharField(max_length=255, description="加密后的密码")
+    role         = fields.CharEnumField(enum_type=UserRole, default=UserRole.user, description="用户角色")
+    avatar_url   = fields.CharField(max_length=255, null=True, description="头像存储路径")
+    created_at   = fields.DatetimeField(auto_now_add=True, default=lambda: datetime.now(utc), description="注册时间(UTC)")
+
+    class Meta:
+        table = "users"
+
+    def __str__(self):
+        return self.email
+
+# 3. Pydantic 模型
+User_Pydantic = pydantic_model_creator(
+    Users, name="User", exclude=("password_hash",)
+)
+UserIn_Pydantic = pydantic_model_creator(
+    Users,
+    name="UserIn",
+    exclude_readonly=True,
+    exclude=("created_at", "user_id"),
+)
 
 class ApiKeys(Model):
     key_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="api_keys", description="关联用户")
+    user = fields.ForeignKeyField("models.Users", related_name="api_keys", description="关联用户", on_delete=fields.CASCADE)
     api_key = fields.CharField(max_length=255, unique=True, description="加密存储的API密钥")
     description = fields.CharField(max_length=255, description="描述", null=True)
     created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
@@ -19,47 +46,48 @@ class ApiKeys(Model):
 
 class Sessions(Model):
     session_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="sessions", description="关联用户")
+    user = fields.ForeignKeyField("models.Users", related_name="sessions", description="关联用户", on_delete=fields.CASCADE)
     title = fields.CharField(max_length=100, description="会话标题")
     created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
 
 class Prompts(Model):
     prompt_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="prompts", description="创建用户")
-    session = fields.ForeignKeyField("models.Sessions", related_name="prompts", description="所属会话")
+    user = fields.ForeignKeyField("models.Users", related_name="prompts", description="创建用户", on_delete=fields.CASCADE)
+    session = fields.ForeignKeyField("models.Sessions", related_name="prompts", description="所属会话", on_delete=fields.CASCADE)
     original_content = fields.TextField(description="原始提示词内容")
     optimized_content = fields.TextField(description="优化后内容", null=True)
     usage_count = fields.IntField(default=0, description="使用次数")
     is_shared = fields.BooleanField(default=False, description="是否分享到社区")
     created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
 
+
 class Tags(Model):
     tag_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="tags", description="所属用户")
+    user = fields.ForeignKeyField("models.Users", related_name="tags", description="所属用户", on_delete=fields.CASCADE)
     tag_name = fields.CharField(max_length=50, description="标签名称（需唯一约束 per user）")
 
 class PromptTags(Model):
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="tags", description="提示词ID")
-    tag = fields.ForeignKeyField("models.Tags", related_name="prompts", description="标签ID")
+    prompt = fields.ForeignKeyField("models.Prompts", related_name="tags", description="提示词ID", on_delete=fields.CASCADE)
+    tag = fields.ForeignKeyField("models.Tags", related_name="prompts", description="标签ID", on_delete=fields.CASCADE)
 
     class Meta:
         unique_together = (("prompt", "tag"),)
 
 class Folders(Model):
     folder_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="folders", description="所属用户")
+    user = fields.ForeignKeyField("models.Users", related_name="folders", description="所属用户", on_delete=fields.CASCADE)
     folder_name = fields.CharField(max_length=100, description="文件夹名称")
 
 class PromptFolders(Model):
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="folders", description="提示词ID")
-    folder = fields.ForeignKeyField("models.Folders", related_name="prompts", description="文件夹ID")
+    prompt = fields.ForeignKeyField("models.Prompts", related_name="folders", description="提示词ID", on_delete=fields.CASCADE)
+    folder = fields.ForeignKeyField("models.Folders", related_name="prompts", description="文件夹ID", on_delete=fields.CASCADE)
 
     class Meta:
         unique_together = (("prompt", "folder"),)
 
 class OptimizationConfigs(Model):
     config_id = fields.IntField(pk=True)  # 主键
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="optimization_configs", description="关联提示词")
+    prompt = fields.ForeignKeyField("models.Prompts", related_name="optimization_configs", description="关联提示词", on_delete=fields.CASCADE)
     optimization_model = fields.CharField(max_length=50, description="使用的优化模型")
     role_enhancement = fields.TextField(description="角色强化配置", null=True)
     example_enhancement = fields.TextField(description="示例增强配置", null=True)
@@ -68,13 +96,30 @@ class OptimizationConfigs(Model):
     reflection_enabled = fields.BooleanField(description="是否启用反思迭代")
 
 class CommunityInteractions(Model):
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="community_interactions", description="被点赞提示词")
-    user = fields.ForeignKeyField("models.Users", related_name="community_interactions", description="点赞用户")
-    created_at = fields.DatetimeField(auto_now_add=True, description="操作时间")
+    id = fields.IntField(pk=True)  # 新增自增主键
+    prompt = fields.ForeignKeyField(
+        "models.Prompts", 
+        related_name="likes",
+        on_delete=fields.CASCADE
+    )
+    user = fields.ForeignKeyField(
+        "models.Users", 
+        related_name="liked_prompts",
+        on_delete=fields.CASCADE
+    )
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "community_interactions"
+        # 添加唯一约束
+        unique_together = [("prompt", "user")]
+
+    def __str__(self):
+        return f"Interaction {self.id}"
 
 class Generations(Model):
     generation_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="generations", description="用户ID")
+    user = fields.ForeignKeyField("models.Users", related_name="generations", description="用户ID", on_delete=fields.CASCADE)
     input_text = fields.TextField(description="用户输入的原始需求")
     generation_strategy = fields.CharField(max_length=3, description="生成策略", choices=["RAG", "LLM"])
     created_at = fields.DatetimeField(auto_now_add=True, description="生成时间")
@@ -87,9 +132,9 @@ class ModelProviders(Model):
 
 class ApiCalls(Model):
     call_id = fields.IntField(pk=True)  # 主键
-    user = fields.ForeignKeyField("models.Users", related_name="api_calls", description="用户ID")
-    provider = fields.ForeignKeyField("models.ModelProviders", related_name="api_calls", description="模型提供商")
-    prompt = fields.ForeignKeyField("models.Prompts", related_name="api_calls", description="关联提示词")
+    user = fields.ForeignKeyField("models.Users", related_name="api_calls", description="用户ID", on_delete=fields.CASCADE)
+    provider = fields.ForeignKeyField("models.ModelProviders", related_name="api_calls", description="模型提供商", on_delete=fields.CASCADE)
+    prompt = fields.ForeignKeyField("models.Prompts", related_name="api_calls", description="关联提示词", on_delete=fields.CASCADE)
     tokens_used = fields.IntField(description="消耗的token数量")
     cost = fields.DecimalField(max_digits=10, decimal_places=4, description="计算后的成本")
     called_at = fields.DatetimeField(auto_now_add=True, description="调用时间")
@@ -109,3 +154,14 @@ class Examples(Model):
     description = fields.TextField()
     content = fields.TextField()  # 示例内容
     is_preset = fields.BooleanField(default=False)
+
+
+
+# 创建 Pydantic 模型
+Session_Pydantic = pydantic_model_creator(Sessions, name="Session")
+Prompts_Pydantic = pydantic_model_creator(Prompts, name="Prompts")
+CommunityInteractions_Pydantic = pydantic_model_creator(
+    CommunityInteractions, 
+    name="CommunityInteractions"
+)
+Tags_Pydantic = pydantic_model_creator(Tags, name="Tags")

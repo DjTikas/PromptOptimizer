@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from models import Prompts, Folders, PromptFolders
+from models import Prompts, Folders, PromptFolders, Users
 from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
-from auth import get_current_user  # 假设有认证模块
+from app.core.security import get_current_active_user
 
 manage_api = APIRouter()
 
@@ -53,14 +53,14 @@ class FolderResponse(FolderBase):
 
 # ---- 提示词管理 ----
 @manage_api.get("/prompts", response_model=List[PromptResponse])
-async def get_all_prompts(cur_user: Cur_user = Depends(get_current_user)):
+async def get_all_prompts(cur_user: Users = Depends(get_current_active_user)):
     """获取当前用户的所有提示词"""
 
     return await Prompts.filter(user_id=cur_user.user_id).all()
 
 
 @manage_api.get("/prompts/{prompt_id}", response_model=PromptResponse)
-async def get_prompt(prompt_id: int, cur_user: int = Depends(get_current_user)):
+async def get_prompt(prompt_id: int, cur_user: Users = Depends(get_current_active_user)):
     """获取单个提示词详情"""
     prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=cur_user.user_id)
     if not prompt:
@@ -71,7 +71,7 @@ async def get_prompt(prompt_id: int, cur_user: int = Depends(get_current_user)):
     return prompt
 
 @manage_api.post("/prompts", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
-async def create_prompt(prompt: PromptCreate, cur_user: int = Depends(get_current_user)):
+async def create_prompt(prompt: PromptCreate, cur_user: Users = Depends(get_current_active_user)):
     """创建新提示词"""
     # 在实际应用中，prompt_id 应由数据库自动生成，不应由客户端提供
     prompt_obj = await Prompts.create(
@@ -84,7 +84,7 @@ async def create_prompt(prompt: PromptCreate, cur_user: int = Depends(get_curren
 async def update_prompt(
     prompt_id: int, 
     prompt: PromptUpdate,
-    cur_user: int = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """更新提示词内容"""
     # 验证提示词存在且属于当前用户
@@ -98,7 +98,7 @@ async def update_prompt(
     return await Prompts.get(prompt_id=prompt_id)
 
 @manage_api.delete("/prompts/{prompt_id}")
-async def delete_prompt(prompt_id: int, cur_user: int = Depends(get_current_user)):
+async def delete_prompt(prompt_id: int, cur_user: Users = Depends(get_current_active_user)):
     """删除单个提示词"""
     delete_count = await Prompts.filter(prompt_id=prompt_id, user_id=cur_user.user_id).delete()
     if not delete_count:
@@ -111,7 +111,7 @@ async def delete_prompt(prompt_id: int, cur_user: int = Depends(get_current_user
 @manage_api.delete("/prompts", status_code=status.HTTP_207_MULTI_STATUS)
 async def batch_delete_prompts(
     prompt_ids: List[int], 
-    cur_user: int = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """批量删除提示词"""
     results = {}
@@ -125,12 +125,12 @@ async def batch_delete_prompts(
 
 # ---- 文件夹管理 ----
 @manage_api.get("/folders", response_model=List[FolderResponse])
-async def get_all_folders(cur_user: int = Depends(get_current_user)):
+async def get_all_folders(cur_user: Users = Depends(get_current_active_user)):
     """获取用户所有文件夹"""
     return await Folders.filter(user_id=cur_user.user_id).all()
 
 @manage_api.post("/folders", response_model=FolderResponse, status_code=status.HTTP_201_CREATED)
-async def create_folder(folder: FolderCreate, cur_user: int = Depends(get_current_user)):
+async def create_folder(folder: FolderCreate, cur_user: Users = Depends(get_current_active_user)):
     """创建新文件夹"""
     folder_obj = await Folders.create(
         user_id=cur_user.user_id,
@@ -142,7 +142,7 @@ async def create_folder(folder: FolderCreate, cur_user: int = Depends(get_curren
 async def update_folder(
     folder_id: int, 
     folder: FolderCreate,
-    cur_user: int = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """更新文件夹信息"""
     if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
@@ -155,7 +155,7 @@ async def update_folder(
     return await Folders.get(folder_id=folder_id)
 
 @manage_api.delete("/folders/{folder_id}")
-async def delete_folder(folder_id: int, cur_user: int = Depends(get_current_user)):
+async def delete_folder(folder_id: int, cur_user: Users = Depends(get_current_active_user)):
     """删除文件夹（同时移除关联）"""
     async with in_transaction():
         # 删除文件夹关联关系
@@ -172,7 +172,7 @@ async def delete_folder(folder_id: int, cur_user: int = Depends(get_current_user
 
 # ---- 文件夹与提示词关联管理 ----
 @manage_api.get("/folders/{folder_id}/prompts", response_model=List[PromptResponse])
-async def get_folder_prompts(folder_id: int, cur_user: int = Depends(get_current_user)):
+async def get_folder_prompts(folder_id: int, cur_user: Users = Depends(get_current_active_user)):
     """获取文件夹内的所有提示词"""
     # 验证文件夹属于当前用户
     if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
@@ -210,7 +210,7 @@ class FolderOperation(BaseModel):
 async def add_prompts_to_folder(
     folder_id: int,
     operation: FolderOperation,
-    cur_user: int = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """添加提示词到文件夹（移动或复制）"""
     # 验证文件夹属于当前用户
@@ -250,7 +250,7 @@ async def add_prompts_to_folder(
 async def remove_prompts_from_folder(
     folder_id: int,
     prompt_ids: List[int],
-    cur_user: int = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """从文件夹中移除提示词"""
     # 验证文件夹属于当前用户

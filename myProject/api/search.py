@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from tortoise.functions import Count
-from models import Prompts, Folders, Tags, PromptTags
+from models import Prompts, Folders, Tags, PromptTags, Users
 from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
 from tortoise.expressions import Q
 from collections import defaultdict
-from auth import get_current_user  # 假设有认证模块
+from app.core.security import get_current_active_user
 
 search_api = APIRouter()
 
@@ -58,12 +58,12 @@ class PromptResponse(BaseModel):
 
 # ---- 提示词标签管理 ----
 @search_api.get("/tags", response_model=List[TagResponse])
-async def get_tags(cur_user: Cur_user = Depends(get_current_user)):
+async def get_tags(cur_user: Users = Depends(get_current_active_user)):
     """获取用户创建的所有tag"""
     return await Tags.filter(user_id=cur_user.user_id).all()
 
 @search_api.post("/tags", status_code=status.HTTP_201_CREATED)
-async def create_tags(assignment: TagAssignment, cur_user: Cur_user = Depends(get_current_user)):
+async def create_tags(assignment: TagAssignment, cur_user: Users = Depends(get_current_active_user)):
     """
     用户给提示词批量创建并分配tag
     - 支持创建新标签名或使用现有标签
@@ -103,7 +103,7 @@ async def create_tags(assignment: TagAssignment, cur_user: Cur_user = Depends(ge
 async def update_tag(
     tag_id: int, 
     tag_update: TagCreate, 
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """用户根据id修改tag内容"""
     # 验证标签存在且属于当前用户
@@ -132,7 +132,7 @@ async def update_tag(
 @search_api.delete("/tags", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tags(
     tag_ids: List[int] = Query(..., description="要删除的标签ID列表"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """用户根据id列表批量删除tag内容"""
     # 验证所有标签属于当前用户
@@ -167,7 +167,7 @@ class PromptTagsResponse(BaseModel):
 @search_api.get("/prompts/{prompt_id}/tags", response_model=List[PromptTagItem])
 async def get_tags_by_prompt_id(
     prompt_id: int,
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """
     根据提示词ID获取关联的标签列表
@@ -195,7 +195,7 @@ async def get_tags_by_prompt_id(
 @search_api.get("/prompts/tags", response_model=List[PromptTagsResponse])
 async def get_tags_for_prompts(
     prompt_ids: List[int] = Query(..., alias="prompt_ids"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """
     批量获取多个提示词的标签列表
@@ -241,7 +241,7 @@ async def get_tags_for_prompts(
 async def get_fuzzy_prompts(
     query: str = Query(..., min_length=2, description="搜索关键词"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """模糊搜索提示词（标题和内容）"""
     # 查询时直接获取外键值
@@ -295,7 +295,7 @@ async def get_fuzzy_prompts(
 async def get_fuzzy_tags(
     query: str = Query(..., min_length=2, description="搜索关键词"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """模糊搜索标签"""
     return await Tags.filter(
@@ -307,7 +307,7 @@ async def get_fuzzy_tags(
 async def get_fuzzy_folders(
     query: str = Query(..., min_length=2, description="搜索关键词"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """模糊搜索文件夹"""
     return await Folders.filter(
@@ -324,7 +324,7 @@ async def filter_prompts_by_tags(
     tags: List[str] = Query(..., description="要筛选的标签列表"),
     mode: str = Query("and", description="筛选模式：'and' 表示必须包含所有标签, 'or' 表示包含任一标签"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
-    cur_user: Cur_user = Depends(get_current_user)
+    cur_user: Users = Depends(get_current_active_user)
 ):
     """
     根据标签筛选提示词

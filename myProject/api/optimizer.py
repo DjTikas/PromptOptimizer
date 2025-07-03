@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
 from tortoise.exceptions import DoesNotExist
-from auth import get_current_user  # 假设有认证模块
+from app.core.security import get_current_active_user
 from llm.llm_client import *
 from llm.config import APIConfig
 from llm.optimization import apply_role_enhancement
@@ -75,7 +75,7 @@ async def get_preset_roles():
     ]
 
 @optimize_api.get("/user-roles", response_model=List[RoleExampleResponse])
-async def get_user_roles(user_id: int = Depends(get_current_user)):
+async def get_user_roles(user_id: Users = Depends(get_current_active_user)):
     """获取当前用户的自定义角色"""
     roles = await Roles.filter(user_id=user_id).all()
     
@@ -113,7 +113,7 @@ async def get_preset_examples():
 @optimize_api.post("/custom-roles", response_model=RoleExampleResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_role(
     role: RoleExampleCreate,
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """创建自定义角色"""
     role_obj = await Roles.create(
@@ -125,7 +125,7 @@ async def create_custom_role(
 @optimize_api.post("/custom-examples", response_model=RoleExampleResponse, status_code=status.HTTP_201_CREATED)
 async def create_custom_example(
     example: RoleExampleCreate,
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """创建自定义示例"""
     example_obj = await Examples.create(
@@ -139,7 +139,7 @@ async def create_custom_example(
 async def optimize_prompt(
     request: OptimizationRequest,
     api_config: APIConfig_temp = Body(default=APIConfig_temp()),
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """
     优化提示词
@@ -165,7 +165,7 @@ async def test_prompt(
     original_content: str,
     optimized_content: str,
     test_request: TestRequest,
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """
     测试提示词效果
@@ -196,7 +196,7 @@ async def test_prompt(
 async def save_optimization_config(
     prompt_id: int,
     config: OptimizationConfig,
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """保存优化配置到提示词"""
     # 验证提示词存在且属于当前用户
@@ -218,7 +218,7 @@ async def save_optimization_config(
 @optimize_api.get("/prompts/{prompt_id}/config", response_model=OptimizationConfig)
 async def get_optimization_config(
     prompt_id: int,
-    user_id: int = Depends(get_current_user)
+    user_id: Users = Depends(get_current_active_user)
 ):
     """获取提示词的优化配置"""
     prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=user_id)
