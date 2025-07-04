@@ -21,4 +21,5 @@
     - INFO:     Application startup complete.
 
 # 接口文档页面
+在运行成功后，fastapi会自动渲染出接口文档：
 http://localhost:8080/docs#/
