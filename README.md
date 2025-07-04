@@ -4,8 +4,10 @@
 
 
 # 运行方法：
-## 1.进入虚拟环境。
+## 1.创建并进入虚拟环境。
+    - # 以Windows系统为例
     - cd myProject
+    - python -m venv venv
     - .\venv\Scripts\activate
 
 ## 2.安装依赖
