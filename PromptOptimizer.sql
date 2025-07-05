@@ -12,7 +12,7 @@
  Target Server Version : 160008 (160008)
  File Encoding         : 65001
 
- Date: 03/07/2025 21:22:25
+ Date: 05/07/2025 12:14:50
 */
 
 
@@ -333,12 +333,19 @@ COMMENT ON COLUMN "public"."folders"."user_id" IS '所属用户';
 -- ----------------------------
 -- Records of folders
 -- ----------------------------
+INSERT INTO "public"."folders" VALUES (6, '默认收藏夹', 1);
+INSERT INTO "public"."folders" VALUES (10, '默认收藏夹', 2);
+INSERT INTO "public"."folders" VALUES (11, '默认收藏夹', 3);
+INSERT INTO "public"."folders" VALUES (12, '默认收藏夹', 4);
+INSERT INTO "public"."folders" VALUES (13, '默认收藏夹', 5);
+INSERT INTO "public"."folders" VALUES (15, '小红书文案', 6);
+INSERT INTO "public"."folders" VALUES (14, '默认收藏夹', 6);
+INSERT INTO "public"."folders" VALUES (16, '默认收藏夹', 7);
 INSERT INTO "public"."folders" VALUES (1, '营销项目', 1);
 INSERT INTO "public"."folders" VALUES (2, '支持模板', 1);
 INSERT INTO "public"."folders" VALUES (3, 'API开发', 2);
 INSERT INTO "public"."folders" VALUES (4, '写作作品集', 3);
 INSERT INTO "public"."folders" VALUES (5, '商业报告', 4);
-INSERT INTO "public"."folders" VALUES (6, '收藏夹', 1);
 
 -- ----------------------------
 -- Table structure for generations
@@ -439,6 +446,11 @@ COMMENT ON COLUMN "public"."promptfolders"."prompt_id" IS '提示词ID';
 -- ----------------------------
 -- Records of promptfolders
 -- ----------------------------
+INSERT INTO "public"."promptfolders" VALUES (69, 14, 15);
+INSERT INTO "public"."promptfolders" VALUES (70, 14, 16);
+INSERT INTO "public"."promptfolders" VALUES (71, 14, 17);
+INSERT INTO "public"."promptfolders" VALUES (72, 14, 18);
+INSERT INTO "public"."promptfolders" VALUES (73, 14, 19);
 INSERT INTO "public"."promptfolders" VALUES (59, 1, 1);
 INSERT INTO "public"."promptfolders" VALUES (60, 6, 1);
 INSERT INTO "public"."promptfolders" VALUES (61, 2, 2);
@@ -483,6 +495,13 @@ INSERT INTO "public"."prompts" VALUES (1, '撰写产品描述', '您是一位资
 INSERT INTO "public"."prompts" VALUES (15, '测试代码', 'string', 0, 'f', '2025-07-03 19:38:09.146151+08', 1, 6);
 INSERT INTO "public"."prompts" VALUES (16, '生成一个美妆产品的小红书文案', 'string', 0, 't', '2025-07-03 19:38:44.064838+08', 1, 6);
 INSERT INTO "public"."prompts" VALUES (17, '生成一个吸引流量的小红书文案', 'string', 0, 't', '2025-07-03 19:40:58.93316+08', 1, 6);
+INSERT INTO "public"."prompts" VALUES (18, '写一篇作文', '以《科技与人文的平衡》为题，写一篇800字议论文。要求：1. 引用至少两个历史案例 2. 对比数字时代与文艺复兴时期的人文精神 3. 提出解决现代困境的三点建议', 0, 't', '2025-07-04 21:30:12+08', 1, 6);
+INSERT INTO "public"."prompts" VALUES (19, '解释代码', '用Python实现一个LRU缓存类，要求：1. 使用双向链表+哈希表 2. 时间复杂度O(1) 3. 包含完整的单元测试用例（使用pytest）', 0, 't', '2025-07-04 21:30:49+08', 2, 6);
+INSERT INTO "public"."prompts" VALUES (21, '学数学技巧', '设计一个面向初中生的勾股定理教学方案：1. 用3个生活实例引入概念 2. 包含互动探究活动 3. 常见错误分析 4. 配套可视化动画（可运行代码）', 0, 't', '2025-07-04 21:31:18+08', 3, 2);
+INSERT INTO "public"."prompts" VALUES (22, '起公司名字', '为AI医疗初创企业生成20个品牌名，要求：1. 中英文双语 2. 包含‘智’/‘康’/‘慧’中至少一字 3. 域名可用性检查 4. 附命名逻辑说明', 0, 't', '2025-07-04 21:31:57+08', 4, 3);
+INSERT INTO "public"."prompts" VALUES (24, '翻译润色', '将以下科技论文摘要翻译成学术英语并润色：''本研究提出新型神经网络架构...'' 要求：1. 保持专业术语准确 2. 符合IEEE写作规范 3. 被动语态占比>60%', 0, 't', '2025-07-04 21:32:34+08', 4, 4);
+INSERT INTO "public"."prompts" VALUES (25, '做旅游计划', '生成葡萄牙7日深度游攻略：1. 聚焦里斯本+波尔图 2. 包含小众文化景点（非网红打卡点） 3. 每日餐饮推荐（标注素食选项） 4. 交通接驳方案', 0, 't', '2025-07-04 21:33:40+08', 5, 3);
+INSERT INTO "public"."prompts" VALUES (26, '写小说开头', '创作科幻短篇开头：1. 设定在2160年月球殖民地 2. 主角发现水资源垄断阴谋 3. 首段包含感官描写（视觉/听觉/触觉） 4. 埋下3个关键伏笔', 0, 't', '2025-07-04 21:34:14+08', 5, 5);
 
 -- ----------------------------
 -- Table structure for prompttags
@@ -625,6 +644,7 @@ INSERT INTO "public"."users" VALUES (3, 'sarah.writer@creative.com', '$2b$12$9hJ
 INSERT INTO "public"."users" VALUES (4, 'mark.analyst@business.org', '$2b$12$1aB2cD3eF4gH5iJ6kL7m8.n9O0P1Q2R3S', '用户', 'https://avatarhub.com/mark_profile.jpg', '2025-05-24 16:07:25.827945+08');
 INSERT INTO "public"."users" VALUES (5, '1111', '$2b$12$0jvrF0ZheV9dejeIhFHw.eIJgBbwvk7yJ5Ht66dsh/RZXjlIPz9Wi', 'user', NULL, '2025-07-03 16:43:49.827511+08');
 INSERT INTO "public"."users" VALUES (6, 'daij27@qq.com', '$2b$12$h1BMyzgiidlv.yr91AmIZeXnvAjY2coWKc31XXhKsn1C9G/dugh8W', 'user', 'http://localhost:8000/avatars/system/blue.png', '2025-07-03 16:54:35.089459+08');
+INSERT INTO "public"."users" VALUES (7, '123@11.com', '$2b$12$lBJxBMDc/HuMwqn5JFTkM.Krw2O7anO2XC5tUnJ6BrGDce1Jx/aS6', 'user', NULL, '2025-07-05 11:55:34.203895+08');
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -666,7 +686,7 @@ SELECT setval('"public"."examples_example_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."folders_folder_id_seq"
 OWNED BY "public"."folders"."folder_id";
-SELECT setval('"public"."folders_folder_id_seq"', 9, true);
+SELECT setval('"public"."folders_folder_id_seq"', 16, true);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -694,14 +714,14 @@ SELECT setval('"public"."optimizationconfigs_config_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."promptfolders_id_seq"
 OWNED BY "public"."promptfolders"."id";
-SELECT setval('"public"."promptfolders_id_seq"', 68, true);
+SELECT setval('"public"."promptfolders_id_seq"', 73, true);
 
 -- ----------------------------
 -- Alter sequences owned by
 -- ----------------------------
 ALTER SEQUENCE "public"."prompts_prompt_id_seq"
 OWNED BY "public"."prompts"."prompt_id";
-SELECT setval('"public"."prompts_prompt_id_seq"', 17, true);
+SELECT setval('"public"."prompts_prompt_id_seq"', 26, true);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -736,7 +756,7 @@ SELECT setval('"public"."tags_tag_id_seq"', 14, true);
 -- ----------------------------
 ALTER SEQUENCE "public"."users_user_id_seq"
 OWNED BY "public"."users"."user_id";
-SELECT setval('"public"."users_user_id_seq"', 6, true);
+SELECT setval('"public"."users_user_id_seq"', 7, true);
 
 -- ----------------------------
 -- Primary Key structure for table aerich
