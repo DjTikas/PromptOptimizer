@@ -2,6 +2,26 @@
 
 ## 实训项目
 
+记得提前安装postgreSQL，并新建数据库。
+数据库连接的配置在myProject/settings.py里面。
+
+## 迁移数据库的过程
+    - 1. 初始化配置，一般只执行一次：
+    - 运行main.py文件之前，要先在终端中运行以下命令：
+    - aerich init -t settings.TORTOISE_ORM
+
+    - 2.初始化数据库，一般只执行一次：
+    - aerich init-db
+    - 
+    - 3.更新模型并迁移：（后面的参数表示标记/命名修改操作）
+    - aerich migrate --name add_column  
+    - 
+    - 4.升级（真正应用修改）：
+    - aerich upgrade
+    - 
+    - 回退、查看历史等功能自行查询
+
+
 
 # 运行方法：
 ## 1.创建并进入虚拟环境。

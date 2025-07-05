@@ -68,6 +68,16 @@ class Prompts(Model):
     usage_count = fields.IntField(default=0, description="使用次数")
     is_shared = fields.BooleanField(default=False, description="是否分享到社区")
     created_at = fields.DatetimeField(auto_now_add=True, description="创建时间")
+    like_count = fields.IntField(default=0, description="点赞数量")  # 新增点赞数字段
+
+
+# 创建包含点赞数的Pydantic模型
+PromptsWithLikes_Pydantic = pydantic_model_creator(
+    Prompts, 
+    name="PromptsWithLikes",
+    exclude=("user.password_hash",)  # 排除敏感字段
+)
+
 
 
 class Tags(Model):

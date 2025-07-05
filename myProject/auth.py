@@ -18,6 +18,7 @@ class Cur_user(BaseModel):
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from tortoise.exceptions import IntegrityError
 from datetime import timedelta
 from pydantic import BaseModel
 from app.core.security import (
@@ -27,7 +28,7 @@ from app.core.security import (
     get_current_active_user,
 )
 import os
-from models import Users
+from models import Users, Folders
 from models import User_Pydantic, UserIn_Pydantic
 from app.core.email_code_service import EmailCodeService
 from app.core.email_utils import send_email
@@ -63,6 +64,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # 定义用户注册路由，接收用户注册信息
 @router.post("/register", response_model=User_Pydantic)
 async def register(user: UserIn_Pydantic):
+    """
+    用户注册路由，接收用户注册信息并创建新用户。为新用户创建默认收藏夹。
+    """
     # 检查邮箱是否已注册
     existing_user = await Users.get_or_none(email=user.email)
     if existing_user:
@@ -71,13 +75,27 @@ async def register(user: UserIn_Pydantic):
     
     # 获取密码的哈希值
     hashed_password = get_password_hash(user.password_hash)
-    # 创建新用户
-    new_user = await Users.create(
-        email=user.email,
-        password_hash=hashed_password,
-    )
-    # 将新用户对象转换为Pydantic模型并返回
-    return await User_Pydantic.from_tortoise_orm(new_user)
+    try:
+        # 创建新用户
+        new_user = await Users.create(
+            email=user.email,
+            password_hash=hashed_password,
+        )
+        
+        # 为新用户创建默认收藏夹
+        default_folder = await Folders.create(
+            user_id=new_user.user_id,
+            folder_name="默认收藏夹"
+        )
+        
+        return await User_Pydantic.from_tortoise_orm(new_user)
+    
+    except IntegrityError as e:
+        # 处理可能的数据库唯一约束错误
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to create default folder"
+        )
 
 # 定义获取当前用户信息的路由，依赖于get_current_active_user函数
 @router.get("/me", response_model=User_Pydantic)

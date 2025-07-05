@@ -54,14 +54,14 @@ class FolderResponse(FolderBase):
 # ---- 提示词管理 ----
 @manage_api.get("/prompts", response_model=List[PromptResponse])
 async def get_all_prompts(cur_user: Users = Depends(get_current_active_user)):
-    """获取当前用户的所有提示词"""
+    """获取当前用户创建的所有提示词"""
 
     return await Prompts.filter(user_id=cur_user.user_id).all()
 
 
 @manage_api.get("/prompts/{prompt_id}", response_model=PromptResponse)
 async def get_prompt(prompt_id: int, cur_user: Users = Depends(get_current_active_user)):
-    """获取单个提示词详情"""
+    """获取用户创建的单个提示词详情"""
     prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=cur_user.user_id)
     if not prompt:
         raise HTTPException(
@@ -131,10 +131,23 @@ async def get_all_folders(cur_user: Users = Depends(get_current_active_user)):
 
 @manage_api.post("/folders", response_model=FolderResponse, status_code=status.HTTP_201_CREATED)
 async def create_folder(folder: FolderCreate, cur_user: Users = Depends(get_current_active_user)):
-    """创建新文件夹"""
+    """创建新文件夹（自动检查重名）"""
+    # 检查当前用户是否已有同名文件夹
+    existing_folder = await Folders.filter(
+        user_id=cur_user.user_id,
+        folder_name=folder.folder_name
+    ).exists()
+    
+    if existing_folder:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件夹名称 '{folder.folder_name}' 已存在"
+        )
+    
+    # 创建新文件夹
     folder_obj = await Folders.create(
         user_id=cur_user.user_id,
-        **folder.model_dump()
+        folder_name=folder.folder_name
     )
     return folder_obj
 
@@ -144,19 +157,54 @@ async def update_folder(
     folder: FolderCreate,
     cur_user: Users = Depends(get_current_active_user)
 ):
-    """更新文件夹信息"""
-    if not await Folders.exists(folder_id=folder_id, user_id=cur_user.user_id):
+    """更新文件夹信息（自动检查重名）"""
+    # 检查文件夹是否存在且属于当前用户
+    folder_obj = await Folders.get_or_none(folder_id=folder_id, user_id=cur_user.user_id)
+    if not folder_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文件夹不存在或无权修改"
         )
     
-    await Folders.filter(folder_id=folder_id).update(**folder.model_dump())
-    return await Folders.get(folder_id=folder_id)
+    # 检查新名称是否与当前名称不同（避免不必要的检查）
+    if folder_obj.folder_name != folder.folder_name:
+        # 检查当前用户是否已有其他同名文件夹
+        # 正确方式：直接检查是否存在同名文件夹（排除当前文件夹）
+        exists = await Folders.filter(
+            user_id=cur_user.user_id,
+            folder_name=folder.folder_name
+        ).exclude(folder_id=folder_id).exists()
+        
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"文件夹名称 '{folder.folder_name}' 已存在"
+            )
+        
+    # 默认收藏夹不可修改
+    if folder_obj.folder_name == "默认收藏夹":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="默认收藏夹名称不可修改"
+        )
+    
+    # 执行更新
+    folder_obj.folder_name = folder.folder_name
+    await folder_obj.save()
+    
+    return folder_obj
 
 @manage_api.delete("/folders/{folder_id}")
 async def delete_folder(folder_id: int, cur_user: Users = Depends(get_current_active_user)):
     """删除文件夹（同时移除关联）"""
+    # 默认收藏夹不可删除
+    folder_obj = await Folders.get_or_none(folder_id=folder_id, user_id=cur_user.user_id)
+    if folder_obj.folder_name == "默认收藏夹":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="默认收藏夹不可删除"
+        )
+    
     async with in_transaction():
         # 删除文件夹关联关系
         await PromptFolders.filter(folder_id=folder_id).delete()

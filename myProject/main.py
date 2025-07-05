@@ -43,11 +43,23 @@ from api.newop import optimize_new_api
 from api.search import search_api
 from api.users import user_api
 from api.prompt import public_api
+from api.api_keys import key_api
 from auth import router
+from fastapi.middleware.cors import CORSMiddleware
 
 register_tortoise(
     app=app,
     config=TORTOISE_ORM,
+)
+
+# 配置 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    max_age=86400,  # 24小时缓存
 )
 
 app.include_router(manage_api, prefix="/manage", tags=["01 提示词管理（收藏相关）"])
@@ -56,6 +68,7 @@ app.include_router(optimize_new_api, prefix="/optimize", tags=["03 提示词优�
 app.include_router(router, prefix="/auth", tags=["04 登录注册"])
 app.include_router(user_api, prefix="/user", tags=["05 用户信息"])
 app.include_router(public_api, prefix="/public", tags=["06 公共搜索"])
+app.include_router(key_api, prefix="/key", tags=["07 api配置"])
 
 if __name__ == '__main__':
     uvicorn.run("main:app", port=8080, reload=True)

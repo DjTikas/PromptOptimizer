@@ -56,7 +56,7 @@ def prompt_test(system, prompt, config):
         response = client.chat.completions.create(
             model=config.model,
             messages=[
-                {"role": "system", "content": system},
+                # {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5,  

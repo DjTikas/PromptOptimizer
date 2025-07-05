@@ -12,7 +12,7 @@
  Target Server Version : 160008 (160008)
  File Encoding         : 65001
 
- Date: 05/07/2025 13:15:22
+ Date: 05/07/2025 19:07:31
 */
 
 
@@ -456,6 +456,11 @@ INSERT INTO "public"."promptfolders" VALUES (70, 14, 16);
 INSERT INTO "public"."promptfolders" VALUES (71, 14, 17);
 INSERT INTO "public"."promptfolders" VALUES (72, 14, 18);
 INSERT INTO "public"."promptfolders" VALUES (73, 14, 19);
+INSERT INTO "public"."promptfolders" VALUES (74, 14, 1);
+INSERT INTO "public"."promptfolders" VALUES (75, 14, 2);
+INSERT INTO "public"."promptfolders" VALUES (76, 14, 6);
+INSERT INTO "public"."promptfolders" VALUES (77, 14, 5);
+INSERT INTO "public"."promptfolders" VALUES (78, 14, 3);
 INSERT INTO "public"."promptfolders" VALUES (59, 1, 1);
 INSERT INTO "public"."promptfolders" VALUES (60, 6, 1);
 INSERT INTO "public"."promptfolders" VALUES (61, 2, 2);
@@ -720,7 +725,7 @@ SELECT setval('"public"."optimizationconfigs_config_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."promptfolders_id_seq"
 OWNED BY "public"."promptfolders"."id";
-SELECT setval('"public"."promptfolders_id_seq"', 73, true);
+SELECT setval('"public"."promptfolders_id_seq"', 78, true);
 
 -- ----------------------------
 -- Alter sequences owned by

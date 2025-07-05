@@ -86,7 +86,7 @@ class OptimizeResponse(BaseModel):
 @optimize_new_api.post("/optimize", response_model=OptimizeResponse)
 async def optimize_prompt(
     request: OptimizeRequest,
-    user: Users = Depends(get_current_active_user)
+    # user: Users = Depends(get_current_active_user)
 ):
     """
     执行提示词优化
@@ -114,7 +114,7 @@ async def optimize_prompt(
     response = OptimizeResponse(
         optimized_prompt=optimized_prompt,
         # optimization_id=history_id,
-        optimization_id="dj test",
+        optimization_id="这个参数用不上，不用管",
         metadata=OptimizationMetadata(
             model_used="dj:gpt-3.5",
             time_elapsed=time.time() - start_time,
@@ -150,11 +150,6 @@ def build_optimization_instruction(request: OptimizeRequest) -> str:
     role_block = ""
     if request.config.role and request.config.role.enabled:
         role_block = f"角色设定：{request.config.role.role_name},{request.config.role.description}\n"
-        # if request.config.role.preset_id:
-        #     role = get_preset_role(request.config.role.preset_id)
-        #     role_block = f"角色设定：{role['description']}\n"
-        # elif request.config.role.description:
-        #     role_block = f"角色设定：{request.config.role.description}\n"
     
     # 示例增强
     examples_block = ""
@@ -287,3 +282,27 @@ def get_cot_template(level: str):
         """
     
     return "未定义的思维链级别"
+
+
+class TestRequest(BaseModel):
+    prompt: str
+    config: ModelConfig
+
+class TestResponse(BaseModel):
+    result: str
+    # optimization_id: str
+    # metadata: OptimizationMetadata
+    # debug_info: Optional[DebugInfo] = None
+
+@optimize_new_api.post("/test", response_model=TestResponse)
+async def optimize_prompt(
+    request: TestRequest,
+    # user: Users = Depends(get_current_active_user)
+):
+    """
+    传入需要测试的提示词，返回该提示词的结果
+    （如果想对比测试，就要调用两次接口）
+    """
+    answer = prompt_test("", prompt=request.prompt, config=request.config)
+    response = TestResponse(result=answer)
+    return response
