@@ -4,8 +4,25 @@ from pydantic import BaseModel
 from typing import List, Optional
 from tortoise.transactions import in_transaction
 from app.core.security import get_current_active_user
+from datetime import datetime
 
 manage_api = APIRouter()
+
+# Tag model
+class TagResponse(BaseModel):
+    tag_id: int
+    tag_name: str
+
+    class Config:
+        orm_mode = True
+
+# User info model
+class UserInfoResponse(BaseModel):
+    email: str
+    avatar_url: Optional[str]
+
+    class Config:
+        orm_mode = True
 
 # 基础模型定义
 class Cur_user(BaseModel):
@@ -27,10 +44,18 @@ class PromptCreate(PromptBase):
 class PromptUpdate(PromptBase):
     pass
 
-
-class PromptResponse(PromptBase):
+# Updated Prompt Response model
+class PromptResponse(BaseModel):
     prompt_id: int
-    user_id: int
+    original_content: str
+    optimized_content: str
+    usage_count: int = 0
+    is_shared: bool = False
+    created_at: datetime
+    like_count: int = 0
+    session_id: int
+    tags: List[TagResponse] = []
+    user_info: UserInfoResponse
 
     class Config:
         orm_mode = True
@@ -50,37 +75,108 @@ class FolderResponse(FolderBase):
         orm_mode = True
 
 
-
 # ---- 提示词管理 ----
 @manage_api.get("/prompts", response_model=List[PromptResponse])
 async def get_all_prompts(cur_user: Users = Depends(get_current_active_user)):
     """获取当前用户创建的所有提示词"""
-
-    return await Prompts.filter(user_id=cur_user.user_id).all()
+    prompts = await Prompts.filter(user_id=cur_user.user_id).prefetch_related("tags__tag", "user").all()
+    
+    prompt_responses = []
+    for prompt in prompts:
+        # Get tags through the junction table
+        tags = []
+        for prompt_tag in prompt.tags:  # This accesses PromptTags instances
+            if prompt_tag.tag:  # Ensure the tag exists
+                tags.append(TagResponse(
+                    tag_id=prompt_tag.tag.tag_id,
+                    tag_name=prompt_tag.tag.tag_name
+                ))
+        
+        prompt_responses.append(
+            PromptResponse(
+                prompt_id=prompt.prompt_id,
+                original_content=prompt.original_content,
+                optimized_content=prompt.optimized_content,
+                usage_count=prompt.usage_count,
+                is_shared=prompt.is_shared,
+                created_at=prompt.created_at,
+                like_count=prompt.like_count,
+                session_id=prompt.session_id,
+                tags=tags,
+                user_info=UserInfoResponse(
+                    email=prompt.user.email,
+                    avatar_url=prompt.user.avatar_url
+                )
+            )
+        )
+    
+    return prompt_responses
 
 
 @manage_api.get("/prompts/{prompt_id}", response_model=PromptResponse)
 async def get_prompt(prompt_id: int, cur_user: Users = Depends(get_current_active_user)):
     """获取用户创建的单个提示词详情"""
-    prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=cur_user.user_id)
+    prompt = await Prompts.get_or_none(
+        prompt_id=prompt_id, 
+        user_id=cur_user.user_id
+    ).prefetch_related("tags__tag", "user")
+    
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="提示词不存在或无权访问"
         )
-    return prompt
+    
+    # Get tags through the junction table
+    tags = []
+    for prompt_tag in prompt.tags:  # This accesses PromptTags instances
+        if prompt_tag.tag:  # Ensure the tag exists
+            tags.append(TagResponse(
+                tag_id=prompt_tag.tag.tag_id,
+                tag_name=prompt_tag.tag.tag_name
+            ))
+    
+    return PromptResponse(
+        prompt_id=prompt.prompt_id,
+        original_content=prompt.original_content,
+        optimized_content=prompt.optimized_content,
+        usage_count=prompt.usage_count,
+        is_shared=prompt.is_shared,
+        created_at=prompt.created_at,
+        like_count=prompt.like_count,
+        session_id=1,  # Access session_id through the session relationship
+        tags=tags,
+        user_info=UserInfoResponse(
+            email=prompt.user.email,
+            avatar_url=prompt.user.avatar_url
+        )
+    )
 
-@manage_api.post("/prompts", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
+@manage_api.post("/prompts", status_code=status.HTTP_201_CREATED)
 async def create_prompt(prompt: PromptCreate, cur_user: Users = Depends(get_current_active_user)):
     """创建新提示词"""
+    # 检查数据库中是否已存在相同用户、相同原始内容和优化内容的提示词
+    existing_prompt = await Prompts.filter(
+        user_id=cur_user.user_id,
+        original_content=prompt.original_content,
+        optimized_content=prompt.optimized_content
+    ).first()
+    
+    if existing_prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="已存在内容完全相同的提示词"
+        )
+    
     # 在实际应用中，prompt_id 应由数据库自动生成，不应由客户端提供
     prompt_obj = await Prompts.create(
         user_id=cur_user.user_id,
         **prompt.model_dump()
     )
     return prompt_obj
+    
 
-@manage_api.put("/prompts/{prompt_id}", response_model=PromptResponse)
+@manage_api.put("/prompts/{prompt_id}" , status_code=status.HTTP_200_OK)
 async def update_prompt(
     prompt_id: int, 
     prompt: PromptUpdate,
@@ -95,7 +191,7 @@ async def update_prompt(
         )
     
     await Prompts.filter(prompt_id=prompt_id).update(**prompt.model_dump())
-    return await Prompts.get(prompt_id=prompt_id)
+    return 
 
 @manage_api.delete("/prompts/{prompt_id}")
 async def delete_prompt(prompt_id: int, cur_user: Users = Depends(get_current_active_user)):
@@ -230,22 +326,40 @@ async def get_folder_prompts(folder_id: int, cur_user: Users = Depends(get_curre
         )
     
     # 通过 PromptFolders 表获取关联的提示词
-    prompts = await PromptFolders.filter(folder_id=folder_id).select_related("prompt").all()
+    prompt_folders = await PromptFolders.filter(folder_id=folder_id).prefetch_related(
+        "prompt__tags__tag", 
+        "prompt__user"
+    ).all()
     
-    # 将 Prompts 对象转换为 PromptResponse 模型
-    prompt_responses = [
-        PromptResponse(
-            prompt_id=prompt.prompt.prompt_id,
-            user_id=prompt.prompt.user_id,
-            session_id=prompt.prompt.session_id,
-            original_content=prompt.prompt.original_content,
-            optimized_content=prompt.prompt.optimized_content,
-            usage_count=prompt.prompt.usage_count,
-            is_shared=prompt.prompt.is_shared,
-            created_at=prompt.prompt.created_at
+    prompt_responses = []
+    for pf in prompt_folders:
+        prompt = pf.prompt
+        # Get tags through the junction table
+        tags = []
+        for prompt_tag in prompt.tags:  # This accesses PromptTags instances
+            if prompt_tag.tag:  # Ensure the tag exists
+                tags.append(TagResponse(
+                    tag_id=prompt_tag.tag.tag_id,
+                    tag_name=prompt_tag.tag.tag_name
+                ))
+        
+        prompt_responses.append(
+            PromptResponse(
+                prompt_id=prompt.prompt_id,
+                original_content=prompt.original_content,
+                optimized_content=prompt.optimized_content,
+                usage_count=prompt.usage_count,
+                is_shared=prompt.is_shared,
+                created_at=prompt.created_at,
+                like_count=prompt.like_count,
+                session_id=1,  # Access session_id through the session relationship
+                tags=tags,
+                user_info=UserInfoResponse(
+                    email=prompt.user.email,
+                    avatar_url=prompt.user.avatar_url
+                )
+            )
         )
-        for prompt in prompts
-    ]
     
     return prompt_responses
 

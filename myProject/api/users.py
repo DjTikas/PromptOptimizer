@@ -6,6 +6,11 @@ from pydantic import BaseModel
 import os
 import uuid
 
+# from ..settings import (  # 注意相对导入
+#     BASE_URL,
+#     AVATAR_UPLOAD_DIR,
+#     AVATAR_SYSTEM_DIR
+# )
 
 user_api = APIRouter()
 class AvatarSelectRequest(BaseModel):
@@ -13,9 +18,13 @@ class AvatarSelectRequest(BaseModel):
 
 
 # 配置头像路径
-BASE_URL = "http://localhost:8000"  # 访问静态文件的域名
-AVATAR_UPLOAD_DIR = "./uploads/avatars/user"     # 用户上传
-AVATAR_SYSTEM_DIR = "./uploads/avatars/system"   # 系统头像
+BASE_URL = "http://47.121.119.236"  # 访问静态文件的域名
+# 获取项目根目录绝对路径
+BASE_DIR = "D:/Desktop/大三下/实训/merge/myProject"
+
+# 头像存储路径
+AVATAR_UPLOAD_DIR = os.path.join(BASE_DIR, "uploads/avatars/user")
+AVATAR_SYSTEM_DIR = os.path.join(BASE_DIR, "uploads/avatars/system")
 
 # 获取当前登录用户信息
 @user_api.get("/me", response_model=User_Pydantic)
@@ -58,13 +67,13 @@ async def select_system_avatar(
     current_user: Users = Depends(get_current_active_user)
 ):
     avatar_name = req.avatar_name
-    avatar_path = os.path.join(AVATAR_SYSTEM_DIR, avatar_name)
-    if not os.path.exists(avatar_path):
-        raise HTTPException(status_code=404, detail="系统头像不存在")
+    # avatar_path = os.path.join(AVATAR_SYSTEM_DIR, avatar_name)
+    # if not os.path.exists(avatar_path):
+    #     raise HTTPException(status_code=404, detail="系统头像不存在，path："+avatar_path)
 
-    avatar_url = f"{BASE_URL}/avatars/system/{avatar_name}"
-    current_user.avatar_url = avatar_url
+    # avatar_url = f"{BASE_URL}/avatars/system/{avatar_name}"
+    current_user.avatar_url = avatar_name
     await current_user.save()
 
-    return {"avatar_url": avatar_url, "message": "系统头像设置成功"}
+    return {"avatar_url": avatar_name, "message": "系统头像设置成功"}
 

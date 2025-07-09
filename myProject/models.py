@@ -43,7 +43,7 @@ class APIKeys(Model):
         related_name="api_keys",
         on_delete=fields.CASCADE
     )
-    api_key = fields.CharField(max_length=255, unique=True)
+    api_key = fields.CharField(max_length=255, unique=False)
     api_name = fields.CharField(max_length=255, null=True)  # 原description字段
     api_address = fields.CharField(max_length=255, null=True)  # 新增API地址字段
     api_type = fields.CharField(max_length=50, null=True)    # 新增API类型字段

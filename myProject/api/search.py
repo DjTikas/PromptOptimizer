@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from tortoise.functions import Count
 from models import Prompts, Folders, PromptFolders, Tags, PromptTags, Users
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from tortoise.transactions import in_transaction
 from tortoise.expressions import Q
@@ -42,19 +42,73 @@ class FolderResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class PromptResponse(BaseModel):
-    prompt_id: int
-    user_id: int
-    session_id: int
-    original_content: str
-    optimized_content: Optional[str]
-    usage_count: int
-    is_shared: bool
-    created_at: str
-    tags: List[str] = []  # 标签名称列表
+# 数据模型定义
+class TagPromptResponse(BaseModel):
+    tag_id: int
+    tag_name: str
 
     class Config:
         orm_mode = True
+
+class UserInfoResponse(BaseModel):
+    email: str
+    avatar_url: str
+
+    class Config:
+        orm_mode = True
+
+class PromptResponse(BaseModel):
+    prompt_id: int
+    original_content: str
+    optimized_content: Optional[str]
+    usage_count: int = 0
+    is_shared: bool = False
+    created_at: str
+    like_count: int = 0
+    session_id: int
+    tags: List[TagPromptResponse] = []
+    user_info: UserInfoResponse
+
+    class Config:
+        orm_mode = True
+
+# class TagFilterResponse(BaseModel):
+#     prompt_id: int
+#     original_content: str
+#     optimized_content: Optional[str]
+#     usage_count: int = 0
+#     is_shared: bool = False
+#     created_at: str
+#     session_id: int
+#     tags: List[str] = []
+#     user_info: UserInfoResponse
+
+#     class Config:
+#         orm_mode = True
+
+# 标签创建请求模型
+class TagCreationRequest(BaseModel):
+    tag_names: List[str] = Field(
+        ...,
+        min_items=1,
+        max_items=50,
+        description="要创建的标签名称列表"
+    )
+
+# 标签分配请求模型（更新版）
+class TagAssignment(BaseModel):
+    tag_ids: List[int] = Field(
+        ...,
+        min_items=1,
+        max_items=100,
+        description="要分配的标签ID列表"
+    )
+    prompt_ids: List[int] = Field(
+        ...,
+        min_items=1,
+        max_items=100,
+        description="要关联的提示词ID列表"
+    )
 
 # ---- 提示词标签管理 ----
 @search_api.get("/tags", response_model=List[TagResponse])
@@ -63,41 +117,152 @@ async def get_tags(cur_user: Users = Depends(get_current_active_user)):
     return await Tags.filter(user_id=cur_user.user_id).all()
 
 @search_api.post("/tags", status_code=status.HTTP_201_CREATED)
-async def create_tags(assignment: TagAssignment, cur_user: Users = Depends(get_current_active_user)):
+async def create_tags(
+    tags: TagCreationRequest, 
+    cur_user: Users = Depends(get_current_active_user)
+):
     """
-    用户给提示词批量创建并分配tag
-    - 支持创建新标签名或使用现有标签
-    - 批量关联到多个提示词
+    创建新标签（不关联提示词）
+    - 支持批量创建标签
+    - 标签在用户下唯一（重复创建已存在标签将忽略）
+    - 返回创建的标签列表（包含已存在的标签）
+    """
+    created_tags = []
+    existing_tags = []
+    
+    async with in_transaction():
+        for tag_name in tags.tag_names:
+            # 检查标签是否已存在（用户下唯一）
+            tag = await Tags.get_or_none(
+                user_id=cur_user.user_id,
+                tag_name=tag_name
+            )
+            
+            if tag:
+                existing_tags.append(tag)
+            else:
+                # 创建新标签
+                new_tag = await Tags.create(
+                    user_id=cur_user.user_id,
+                    tag_name=tag_name
+                )
+                created_tags.append(new_tag)
+    
+    # 合并结果（包括已存在的标签）
+    all_tags = created_tags + existing_tags
+    
+    return {
+        "created_count": len(created_tags),
+        "existing_count": len(existing_tags),
+        "tags": [
+            {"tag_id": tag.tag_id, "tag_name": tag.tag_name}
+            for tag in all_tags
+        ]
+    }
+
+@search_api.post("/prompts/tags/assignments", status_code=status.HTTP_201_CREATED)
+async def assign_tags_to_prompts(
+    assignment: TagAssignment,
+    cur_user: Users = Depends(get_current_active_user)
+):
+    """
+    将已有标签关联到多个提示词
+    - 要求标签和提示词必须存在且属于当前用户
+    - 支持批量操作（多个标签关联到多个提示词）
+    - 已存在的关联关系将自动跳过
     """
     # 验证所有提示词属于当前用户
+    prompt_ids = assignment.prompt_ids
+    tag_ids = assignment.tag_ids
+    
     prompt_count = await Prompts.filter(
-        prompt_id__in=assignment.prompt_ids,
+        prompt_id__in=prompt_ids,
         user_id=cur_user.user_id
     ).count()
     
-    if prompt_count != len(assignment.prompt_ids):
+    if prompt_count != len(prompt_ids):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="部分提示词不存在或无权操作"
         )
     
-    async with in_transaction():
-        # 处理每个标签
-        for tag_name in assignment.tag_names:
-            # 查找或创建标签（确保用户标签名唯一）
-            tag, created = await Tags.get_or_create(
-                user_id=cur_user.user_id,
-                tag_name=tag_name,
-                defaults={'user_id': cur_user.user_id, 'tag_name': tag_name}
-            )
-            
-            # 为每个提示词关联标签
-            for prompt_id in assignment.prompt_ids:
-                # 检查是否已存在关联
-                if not await PromptTags.exists(prompt_id=prompt_id, tag_id=tag.tag_id):
-                    await PromptTags.create(prompt_id=prompt_id, tag_id=tag.tag_id)
+    # 验证所有标签属于当前用户
+    tag_count = await Tags.filter(
+        tag_id__in=tag_ids,
+        user_id=cur_user.user_id
+    ).count()
     
-    return {"message": f"成功为{len(assignment.prompt_ids)}个提示词添加{len(assignment.tag_names)}个标签"}
+    if tag_count != len(tag_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="部分标签不存在或无权操作"
+        )
+    
+    created_count = 0
+    skipped_count = 0
+    
+    async with in_transaction():
+        # 为每个提示词关联所有标签
+        for prompt_id in prompt_ids:
+            for tag_id in tag_ids:
+                # 检查是否已存在关联
+                if not await PromptTags.exists(
+                    prompt_id=prompt_id, 
+                    tag_id=tag_id
+                ):
+                    await PromptTags.create(
+                        prompt_id=prompt_id, 
+                        tag_id=tag_id
+                    )
+                    created_count += 1
+                else:
+                    skipped_count += 1
+    
+    return {
+        "message": f"成功创建 {created_count} 个关联，跳过 {skipped_count} 个已存在关联",
+        "created_relations": created_count,
+        "skipped_relations": skipped_count,
+        "prompt_count": len(prompt_ids),
+        "tag_count": len(tag_ids)
+    }
+
+@search_api.delete(
+    "/prompts/{prompt_id}/tags/{tag_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_prompt_tag_relation(
+    prompt_id: int,
+    tag_id: int,
+    # cur_user: Users = Depends(get_current_active_user)  # 按需启用认证
+):
+    """
+    删除提示词和标签的关联关系
+    
+    参数:
+    - prompt_id: 提示词ID
+    - tag_id: 标签ID
+    
+    返回:
+    - 204: 删除成功
+    - 404: 关系不存在
+    """
+    # 检查关系是否存在
+    relation = await PromptTags.get_or_none(
+        prompt_id=prompt_id,
+        tag_id=tag_id
+    )
+    
+    if not relation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="提示词与标签的关联关系不存在"
+        )
+    
+    # 删除关系
+    await relation.delete()
+    
+    # 返回204 No Content
+    return
 
 @search_api.put("/tag/{tag_id}", response_model=TagResponse)
 async def update_tag(
@@ -167,19 +332,18 @@ class PromptTagsResponse(BaseModel):
 @search_api.get("/prompts/{prompt_id}/tags", response_model=List[PromptTagItem])
 async def get_tags_by_prompt_id(
     prompt_id: int,
-    cur_user: Users = Depends(get_current_active_user)
+    # cur_user: Users = Depends(get_current_active_user)
 ):
     """
     根据提示词ID获取关联的标签列表
-    - 验证提示词属于当前用户
     - 返回该提示词的所有标签
     """
-    # 验证提示词是否存在且属于当前用户
-    prompt = await Prompts.get_or_none(prompt_id=prompt_id, user_id=cur_user.user_id)
+    # 验证提示词是否存在
+    prompt = await Prompts.get_or_none(prompt_id=prompt_id)
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="提示词不存在或无权访问"
+            detail="提示词不存在"
         )
     
     # 查询关联的标签
@@ -195,24 +359,23 @@ async def get_tags_by_prompt_id(
 @search_api.get("/prompts/tags", response_model=List[PromptTagsResponse])
 async def get_tags_for_prompts(
     prompt_ids: List[int] = Query(..., alias="prompt_ids"),
-    cur_user: Users = Depends(get_current_active_user)
+    # cur_user: Users = Depends(get_current_active_user)
 ):
     """
     批量获取多个提示词的标签列表
-    - 验证所有提示词属于当前用户
     - 返回每个提示词对应的标签集合
     """
     # 验证所有提示词属于当前用户
     valid_prompts = await Prompts.filter(
         prompt_id__in=prompt_ids,
-        user_id=cur_user.user_id
+        # user_id=cur_user.user_id
     ).values_list("prompt_id", flat=True)
     
     if len(valid_prompts) != len(prompt_ids):
         invalid_ids = set(prompt_ids) - set(valid_prompts)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"无权访问的提示词ID: {invalid_ids}"
+            detail=f"无法访问的提示词ID: {invalid_ids}"
         )
     
     # 查询所有关联的标签
@@ -237,89 +400,84 @@ async def get_tags_for_prompts(
     ]
 
 # ---- 提示词智能搜索管理 ----
+
 @search_api.get("/fuzzy/prompts", response_model=List[PromptResponse])
 async def get_fuzzy_prompts(
-    query: str = Query(..., min_length=2, description="搜索关键词"),
+    query: str = Query(..., min_length=1, description="搜索关键词"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
     cur_user: Users = Depends(get_current_active_user)
 ):
     """模糊搜索收藏的提示词（包括自己创建的和收藏的他人提示词）"""
     # 获取用户自己创建的提示词ID
-    own_prompt_ids = await Prompts.filter(
+    own_prompts = await Prompts.filter(
         Q(original_content__icontains=query) | 
         Q(optimized_content__icontains=query),
         user_id=cur_user.user_id
-    ).values_list("prompt_id", flat=True)
+    ).prefetch_related("tags__tag", "user")
     
-    # 获取用户收藏的他人提示词ID（通过文件夹关联）
-    collected_prompt_ids = await PromptFolders.filter(
-        folder__user_id=cur_user.user_id,  # 确保文件夹属于当前用户
-        prompt__original_content__icontains=query  # 在收藏的提示词中搜索
-    ).values_list("prompt_id", flat=True)
+    # 获取用户收藏的他人提示词（通过文件夹关联）
+    collected_prompts = await PromptFolders.filter(
+        folder__user_id=cur_user.user_id,
+        prompt__original_content__icontains=query
+    ).prefetch_related("prompt__tags__tag", "prompt__user")
     
-    # 合并所有提示词ID并去重
-    all_prompt_ids = set(list(own_prompt_ids) + list(collected_prompt_ids))
+    # 合并所有提示词
+    all_prompts = []
+    prompt_ids = set()
     
-    # 如果没有匹配的提示词，直接返回空列表
-    if not all_prompt_ids:
-        return []
+    for prompt in own_prompts:
+        if prompt.prompt_id not in prompt_ids:
+            all_prompts.append(prompt)
+            prompt_ids.add(prompt.prompt_id)
     
-    # 获取完整的提示词信息
-    prompts = await Prompts.filter(
-        prompt_id__in=all_prompt_ids
-    ).prefetch_related("tags__tag").values(
-        "prompt_id",
-        "user_id",
-        "session_id",
-        "original_content",
-        "optimized_content",
-        "usage_count",
-        "is_shared",
-        "created_at"
-    )
-    
-    # 获取所有提示词的标签
-    prompt_ids = [p["prompt_id"] for p in prompts]
-    tags_map = {}
-    if prompt_ids:
-        tag_relations = await PromptTags.filter(
-            prompt_id__in=prompt_ids
-        ).prefetch_related("tag")
-        
-        for rel in tag_relations:
-            if rel.prompt_id not in tags_map:
-                tags_map[rel.prompt_id] = []
-            tags_map[rel.prompt_id].append(rel.tag.tag_name)
+    for pf in collected_prompts:
+        prompt = pf.prompt
+        if prompt.prompt_id not in prompt_ids:
+            all_prompts.append(prompt)
+            prompt_ids.add(prompt.prompt_id)
     
     # 构建响应
     result = []
-    for prompt in prompts:
+    for prompt in all_prompts:
+        # 获取标签
+        tags = []
+        for prompt_tag in prompt.tags:
+            if prompt_tag.tag:
+                tags.append(TagPromptResponse(
+                    tag_id=prompt_tag.tag.tag_id,
+                    tag_name=prompt_tag.tag.tag_name
+                ))
+        
+        # 获取用户信息
+        user_info = UserInfoResponse(
+            email=prompt.user.email,
+            avatar_url=prompt.user.avatar_url
+        )
+        
         response = PromptResponse(
-            prompt_id=prompt["prompt_id"],
-            user_id=prompt["user_id"],
-            session_id=prompt["session_id"],
-            original_content=prompt["original_content"],
-            optimized_content=prompt["optimized_content"],
-            usage_count=prompt["usage_count"],
-            is_shared=prompt["is_shared"],
-            created_at=prompt["created_at"].isoformat(),
-            tags=tags_map.get(prompt["prompt_id"], [])
+            prompt_id=prompt.prompt_id,
+            original_content=prompt.original_content,
+            optimized_content=prompt.optimized_content,
+            usage_count=prompt.usage_count,
+            is_shared=prompt.is_shared,
+            created_at=prompt.created_at.isoformat(),
+            like_count=prompt.like_count,
+            session_id=1,
+            tags=tags,
+            user_info=user_info
         )
         result.append(response)
     
-    # 按相关性排序（优先匹配原始内容）
+    # 按相关性排序
     def sort_key(p):
-        # 优先匹配原始内容
         if query.lower() in p.original_content.lower():
             return 0
-        # 其次匹配优化后内容
         if p.optimized_content and query.lower() in p.optimized_content.lower():
             return 1
         return 2
     
     result.sort(key=sort_key)
     
-    # 返回限制数量的结果
     return result[:limit]
 
 @search_api.get("/fuzzy/tags", response_model=List[TagResponse])
@@ -346,126 +504,92 @@ async def get_fuzzy_folders(
         user_id=cur_user.user_id
     ).limit(limit).all()
 
-class TagFilterResponse(PromptResponse):
-    """扩展响应模型，包含匹配信息（可选）"""
-    pass
 
-@search_api.get("/filter/tags", response_model=List[TagFilterResponse])
+@search_api.get("/filter/tags", response_model=List[PromptResponse])
 async def filter_prompts_by_tags(
     tags: List[str] = Query(..., description="要筛选的标签列表"),
     mode: str = Query("and", description="筛选模式：'and' 表示必须包含所有标签, 'or' 表示包含任一标签"),
     limit: int = Query(10, ge=1, le=100, description="返回结果数量"),
     cur_user: Users = Depends(get_current_active_user)
 ):
-    """
-    根据标签名称筛选用户私有提示词库中的提示词
-    - 基于标签名称匹配而不是标签ID
-    - 支持 AND/OR 两种筛选逻辑
-    - 返回匹配的提示词及其所有标签
-    """
-    # 1. 获取用户私有提示词库中的所有提示词ID（自己创建的和收藏的）
-    # 获取用户自己创建的提示词ID
-    own_prompt_ids = await Prompts.filter(
+    """根据标签名称筛选用户私有提示词库中的提示词"""
+    # 获取用户私有提示词库中的所有提示词
+    own_prompts = await Prompts.filter(
         user_id=cur_user.user_id
-    ).values_list("prompt_id", flat=True)
+    ).prefetch_related("tags__tag", "user", "session")
     
-    # 获取用户收藏的提示词ID（通过文件夹）
-    collected_prompt_ids = await PromptFolders.filter(
+    collected_prompts = await PromptFolders.filter(
         folder__user_id=cur_user.user_id
-    ).values_list("prompt_id", flat=True)
+    ).prefetch_related("prompt__tags__tag", "prompt__user", "prompt__session")
     
-    # 合并并去重
-    all_prompt_ids = set(list(own_prompt_ids) + list(collected_prompt_ids))
+    # 合并提示词
+    all_prompts = []
+    prompt_ids = set()
     
-    if not all_prompt_ids:
-        return []  # 用户私有库中没有提示词
+    for prompt in own_prompts:
+        if prompt.prompt_id not in prompt_ids:
+            all_prompts.append(prompt)
+            prompt_ids.add(prompt.prompt_id)
     
-    # 2. 根据模式构建标签名称筛选查询
-    if mode.lower() == "and":
-        # AND 模式：提示词必须包含所有标签名称
-        # 使用子查询确保包含所有标签名称
-        filtered_prompt_ids = all_prompt_ids.copy()
+    for pf in collected_prompts:
+        prompt = pf.prompt
+        if prompt.prompt_id not in prompt_ids:
+            all_prompts.append(prompt)
+            prompt_ids.add(prompt.prompt_id)
+    
+    # 根据标签筛选
+    filtered_prompts = []
+    
+    for prompt in all_prompts:
+        prompt_tags = [pt.tag.tag_name for pt in prompt.tags if pt.tag]
         
-        for tag_name in tags:
-            # 对于每个标签名称，筛选出拥有该标签的提示词
-            tagged_prompt_ids = await PromptTags.filter(
-                tag__tag_name=tag_name,
-                # tag__user_id=cur_user.user_id,
-                prompt_id__in=filtered_prompt_ids
-            ).values_list("prompt_id", flat=True)
-            
-            # 更新筛选结果
-            filtered_prompt_ids = set(tagged_prompt_ids)
-            
-            # 如果已经没有匹配的提示词，提前退出
-            if not filtered_prompt_ids:
-                break
+        if mode.lower() == "and":
+            # 必须包含所有标签
+            if all(tag in prompt_tags for tag in tags):
+                filtered_prompts.append(prompt)
+        elif mode.lower() == "or":
+            # 包含任一标签
+            if any(tag in prompt_tags for tag in tags):
+                filtered_prompts.append(prompt)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="无效的筛选模式，仅支持 'and' 或 'or'"
+            )
     
-    elif mode.lower() == "or":
-        # OR 模式：提示词包含任一标签名称
-        filtered_prompt_ids = await PromptTags.filter(
-            tag__tag_name__in=tags,
-            # tag__user_id=cur_user.user_id,
-            prompt_id__in=all_prompt_ids
-        ).distinct().values_list("prompt_id", flat=True)
-        filtered_prompt_ids = set(filtered_prompt_ids)
-    
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="无效的筛选模式，仅支持 'and' 或 'or'"
-        )
-    
-    # 3. 获取提示词详情
-    if not filtered_prompt_ids:
-        return []  # 没有匹配的提示词
-    
-    prompts = await Prompts.filter(
-        prompt_id__in=filtered_prompt_ids
-    ).values(
-        "prompt_id",
-        "user_id",
-        "session_id",
-        "original_content",
-        "optimized_content",
-        "usage_count",
-        "is_shared",
-        "created_at"
-    )
-    
-    # 4. 获取所有提示词的标签（只获取当前用户添加的标签）
-    prompt_ids = [p["prompt_id"] for p in prompts]
-    tags_map = {}
-    if prompt_ids:
-        # 获取当前用户为这些提示词添加的所有标签
-        tag_relations = await PromptTags.filter(
-            prompt_id__in=prompt_ids,
-            # tag__user_id=cur_user.user_id
-        ).prefetch_related("tag")
-        
-        for rel in tag_relations:
-            if rel.prompt_id not in tags_map:
-                tags_map[rel.prompt_id] = []
-            tags_map[rel.prompt_id].append(rel.tag.tag_name)
-    
-    # 5. 构建响应
+    # 构建响应
     result = []
-    for prompt in prompts:
-        response = TagFilterResponse(
-            prompt_id=prompt["prompt_id"],
-            user_id=prompt["user_id"],
-            session_id=prompt["session_id"],
-            original_content=prompt["original_content"],
-            optimized_content=prompt["optimized_content"],
-            usage_count=prompt["usage_count"],
-            is_shared=prompt["is_shared"],
-            created_at=prompt["created_at"].isoformat(),
-            tags=tags_map.get(prompt["prompt_id"], [])
+    for prompt in filtered_prompts:
+        # 获取标签详细信息
+        tag_responses = [
+            TagPromptResponse(
+                tag_id=pt.tag.tag_id,
+                tag_name=pt.tag.tag_name
+            )
+            for pt in prompt.tags if pt.tag
+        ]
+        
+        # 获取用户信息
+        user_info = UserInfoResponse(
+            email=prompt.user.email,
+            avatar_url=prompt.user.avatar_url
+        )
+        
+        response = PromptResponse(
+            prompt_id=prompt.prompt_id,
+            original_content=prompt.original_content,
+            optimized_content=prompt.optimized_content,
+            usage_count=prompt.usage_count,
+            is_shared=prompt.is_shared,
+            created_at=prompt.created_at.isoformat(),
+            like_count=prompt.like_count,
+            session_id=prompt.session.session_id,  # 确保session_id正确获取
+            tags=tag_responses,  # 使用TagPromptResponse列表
+            user_info=user_info
         )
         result.append(response)
     
-    # 6. 按创建时间排序
+    # 按创建时间排序
     result.sort(key=lambda x: x.created_at, reverse=True)
     
-    # 7. 返回限制数量的结果
     return result[:limit]

@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 import uvicorn
 
 """ 迁移数据库的过程
@@ -36,7 +36,7 @@ async def custom_swagger_ui_html():
 ### 渲染结束
 
 from tortoise.contrib.fastapi import register_tortoise
-from settings import TORTOISE_ORM
+from settings import TORTOISE_ORM, BASE_DIR, UPLOADS_DIR
 from api.management import manage_api
 from api.optimizer import optimize_api
 from api.newop import optimize_new_api
@@ -52,15 +52,28 @@ register_tortoise(
     config=TORTOISE_ORM,
 )
 
+# 挂载静态文件服务
+app.mount("/uploads", StaticFiles(directory="D:/Desktop/大三下/实训/merge/myProject"), name="uploads")
+
 # 配置 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    max_age=86400,  # 24小时缓存
+    max_age=86400 
 )
+@app.options("/optimize/optimize")
+async def preflight_handler():
+    return {"message": "OK"}
+@app.middleware("http")
+async def force_proper_headers(request: Request, call_next):
+    response = await call_next(request)
+    # 强制规范化CORS头
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    return response
 
 app.include_router(manage_api, prefix="/manage", tags=["01 提示词管理（收藏相关）"])
 app.include_router(search_api, prefix="/search", tags=["02 提示词管理（搜索相关）"])

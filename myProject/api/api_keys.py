@@ -66,11 +66,10 @@ async def update_api_key(
     if not api_key:
         raise HTTPException(status_code=404, detail="API密钥不存在")
     
-    # 仅当提供新密钥时才加密更新
+    # 获取更新数据，不进行加密处理
     updated_data = api_key_data.dict(exclude_unset=True)
-    # if "api_key" in updated_data:
-    #     updated_data["api_key"] = encrypt_api_key(updated_data["api_key"])
     
+    # 更新数据
     await api_key.update_from_dict(updated_data)
     await api_key.save()
     return await APIKeys_Pydantic.from_tortoise_orm(api_key)
