@@ -32,3 +32,29 @@ myProject文件夹里面是后端文件
 ## 接口文档页面
 在运行成功后，fastapi会自动渲染出接口文档：
 http://localhost:8080/docs#/
+
+
+# 前端
+
+## Project setup
+```
+npm install
+```
+
+### Compiles and hot-reloads for development
+```
+npm run serve
+```
+
+### Compiles and minifies for production
+```
+npm run build
+```
+
+### Lints and fixes files
+```
+npm run lint
+```
+
+### Customize configuration
+See [Configuration Reference](https://cli.vuejs.org/config/).
