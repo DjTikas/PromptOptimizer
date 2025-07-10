@@ -1,0 +1,50 @@
+/* 全局样式 */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f5f7fa;
+  }
+  
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+  
+  button {
+    cursor: pointer;
+  }
+  
+  /* 过渡动画 */
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.3s ease;
+  }
+  
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+  
+  /* 响应式布局 */
+  @media (max-width: 768px) {
+    .collections-container {
+      flex-direction: column;
+    }
+    
+    .sidebar {
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .api-list {
+      grid-template-columns: 1fr;
+    }
+  }
